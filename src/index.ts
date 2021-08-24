@@ -1,36 +1,37 @@
 import * as React from "react";
 import * as ReactDOM from "react-dom";
 
-type WebComponentUpdater = (
-  component: React.ComponentType,
-  reactModule: typeof React,
-  reactDOMModule: typeof ReactDOM
-) => void;
+type CreateWebComponentClassParams<T> = {
+  componentType: React.ComponentType<T>;
+  customPropsFieldName: string;
+};
 
-function createWebComponent(
-  component: React.ComponentType,
-  reactModule: typeof React,
-  reactDOMModule: typeof ReactDOM
-): {
-  elementClass: typeof HTMLElement;
-  updater: WebComponentUpdater;
-} {
-  return null as any;
-}
+const privatePropsFieldName = Symbol("privatePropsFieldName");
 
-const registry = new Map<string, WebComponentUpdater>();
-function addOrUpdatewebComponent(
-  elementName: string,
-  component: React.ComponentType,
-  reactModule: typeof React,
-  reactDOMModule: typeof ReactDOM
-) {
-  const updater = registry.get(elementName);
-  if (updater) {
-    updater(component, reactModule, reactDOMModule);
-  } else {
-    const { elementClass, updater } = createWebComponent(component, reactModule, reactDOMModule);
-    registry.set(elementName, updater);
-    window.customElements.define(elementName, elementClass);
-  }
+export function createWebComponentClass<T extends {} = any>({
+  componentType,
+  customPropsFieldName = "customProps",
+}: CreateWebComponentClassParams<T>) {
+  return class extends HTMLElement {
+    [privatePropsFieldName]: T;
+
+    set [customPropsFieldName](props: T) {
+      this[privatePropsFieldName] = props;
+      this.render();
+    }
+
+    render() {
+      const props = this[privatePropsFieldName];
+      const childElement = React.createElement(componentType, props);
+      return ReactDOM.render(childElement, this);
+    }
+
+    connectedCallback() {
+      this.render();
+    }
+
+    disconnectedCallback() {
+      ReactDOM.unmountComponentAtNode(this);
+    }
+  };
 }
