@@ -1,37 +1,55 @@
 import * as React from "react";
-import * as ReactDOM from "react-dom";
+import * as ReactDOM from "react-dom/client";
 
-type CreateWebComponentClassParams<T> = {
-  componentType: React.ComponentType<T>;
-  customPropsFieldName: string;
+type CreateWebComponentClassParams<T, K extends string> = {
+  component: React.ComponentType<{ [key in K]: T | undefined }>;
+  dataPropName: K;
+  shadowDom: boolean;
 };
 
-const privatePropsFieldName = Symbol("privatePropsFieldName");
-
-export function createWebComponentClass<T extends {} = any>({
-  componentType,
-  customPropsFieldName = "customProps",
-}: CreateWebComponentClassParams<T>) {
+export function createWebComponentClass<T, K extends string>({
+  component,
+  dataPropName,
+  shadowDom,
+}: CreateWebComponentClassParams<T, K>) {
+  type Props = { [key in K]: T | undefined };
   return class extends HTMLElement {
-    [privatePropsFieldName]: T;
+    #container: HTMLElement | ShadowRoot = shadowDom ? this.attachShadow({ mode: "open" }) : this;
+    #root = ReactDOM.createRoot(this.#container);
+    #customData: T | undefined;
 
-    set [customPropsFieldName](props: T) {
-      this[privatePropsFieldName] = props;
-      this.render();
+    #render() {
+      const childElement = React.createElement(component, { [dataPropName]: this.#customData } as Props);
+      this.#root.render(childElement);
     }
 
-    render() {
-      const props = this[privatePropsFieldName];
-      const childElement = React.createElement(componentType, props);
-      return ReactDOM.render(childElement, this);
+    set [dataPropName](props: T) {
+      this.#customData = props;
+      this.#render();
     }
 
     connectedCallback() {
-      this.render();
+      this.#render();
     }
 
     disconnectedCallback() {
-      ReactDOM.unmountComponentAtNode(this);
+      this.#root.unmount();
     }
   };
+}
+
+export function registerWebComponentClass<T, K extends string>({
+  component,
+  tagName,
+  shadowDom = false,
+  dataPropName = "customData" as K,
+}: {
+  component: React.ComponentType<{ [key in K]: T | undefined }>;
+  dataPropName?: K;
+  shadowDom?: boolean;
+  tagName: string;
+}) {
+  if (!window.customElements.get(tagName)) {
+    window.customElements.define(tagName, createWebComponentClass<T, K>({ component, dataPropName, shadowDom }));
+  }
 }
